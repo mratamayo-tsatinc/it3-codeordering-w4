@@ -1652,3 +1652,215 @@ body, html {
     font-size: 0.8rem;
     color: var(--text-tertiary);
 }
+
+/* --- 9. SAMPLE OUTPUT CONSOLE PANEL (slides in from the right) --- */
+/* Styled to look like a real terminal/console window, since that's where
+   a C program's printf output would actually appear: dark screen
+   background, monospace font, and a light "phosphor" text color rather
+   than the app's usual Material palette. */
+.console-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100vh;
+    width: 480px;
+    max-width: 92vw;
+    background: #1e1e1e;
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.45);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.console-panel.open {
+    transform: translateX(0);
+}
+
+.console-titlebar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.9rem 1rem;
+    background: #323233;
+    border-bottom: 1px solid #000;
+    flex-shrink: 0;
+}
+
+.console-traffic-lights {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.console-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.dot-red { background: #ff5f56; }
+.dot-yellow { background: #ffbd2e; }
+.dot-green { background: #27c93f; }
+
+.console-title {
+    flex: 1;
+    margin: 0;
+    text-align: center;
+    color: #cfcfcf;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    /* Offset by the traffic-light width so the title stays visually
+       centered in the bar rather than centered between the lights and
+       the close button. */
+    margin-left: -1.5rem;
+}
+
+.console-close-btn {
+    background: none;
+    border: none;
+    color: #aaaaaa;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    transition: var(--transition);
+}
+
+.console-close-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.console-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #0c0c0c;
+    background-image: repeating-linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.015) 0px,
+        rgba(255, 255, 255, 0.015) 1px,
+        transparent 1px,
+        transparent 2px
+    );
+    padding: 1.25rem 1.5rem;
+}
+
+.console-text {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: 'Roboto Mono', 'Consolas', 'Courier New', monospace;
+    font-size: 0.95rem;
+    line-height: 1.7;
+    color: #33ff66;
+    text-shadow: 0 0 6px rgba(51, 255, 102, 0.35);
+}
+
+/* Blinking cursor after the output, to sell the "live terminal" feel */
+.console-body::after {
+    content: '';
+    display: none;
+}
+
+.console-text::after {
+    content: '\2588';
+    display: inline-block;
+    margin-left: 2px;
+    color: #33ff66;
+    animation: consoleBlink 1s step-end infinite;
+}
+
+@keyframes consoleBlink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+
+@media (max-width: 480px) {
+    .console-panel {
+        width: 100vw;
+        max-width: 100vw;
+    }
+}
+
+/* --- 10. SAMPLE OUTPUT TOGGLE SWITCH --- */
+.toggle-control {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 46px;
+    height: 26px;
+    flex-shrink: 0;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.toggle-slider {
+    position: absolute;
+    inset: 0;
+    background-color: #ccc;
+    transition: var(--transition);
+    border-radius: 34px;
+}
+
+.toggle-slider::before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: var(--transition);
+    border-radius: 50%;
+    box-shadow: var(--shadow-sm);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background: linear-gradient(135deg, var(--primary), #7c3aed);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(20px);
+}
+
+.toggle-switch input:focus-visible + .toggle-slider {
+    box-shadow: 0 0 0 3px rgba(98, 0, 238, 0.25);
+}
+
+.toggle-switch input:disabled + .toggle-slider {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.toggle-label {
+    font-size: clamp(0.82rem, 2.2vw, 0.9rem);
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.toggle-control:has(input:disabled) {
+    cursor: not-allowed;
+}
+
+.toggle-control:has(input:disabled) .toggle-label {
+    opacity: 0.5;
+}
