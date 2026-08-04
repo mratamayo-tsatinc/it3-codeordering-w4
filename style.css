@@ -279,6 +279,41 @@ body, html {
     word-break: break-word;
 }
 
+/* Live day/date/time readout under the user's email */
+.user-timestamp {
+    margin-top: 0.4rem;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+    letter-spacing: 0.2px;
+}
+
+.timestamp-divider {
+    color: var(--border-color);
+}
+
+.timestamp-seconds {
+    display: inline-block;
+    color: var(--primary);
+    font-weight: 700;
+}
+
+/* Re-triggered every tick from script.js so the seconds visibly "pulse"
+   each time they update, giving the clock a live, running feel. */
+.timestamp-seconds.tick {
+    animation: timestampPulse 1s ease-out;
+}
+
+@keyframes timestampPulse {
+    0% { opacity: 0.45; transform: scale(0.9); }
+    35% { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
 .sidebar h3 {
     font-size: 0.75rem;
     color: var(--text-tertiary);
@@ -1110,8 +1145,8 @@ body, html {
 }
 
 .sidebar li.active .nav-score {
-    background: rgba(255, 255, 255, 0.25);
-    color: white;
+    background: rgba(98, 0, 238, 0.14);
+    color: var(--primary-dark);
 }
 
 .nav-score.completed-score {
