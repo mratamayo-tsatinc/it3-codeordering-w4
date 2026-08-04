@@ -82,6 +82,38 @@ function closeSidebar() {
     document.body.style.overflow = '';
 }
 
+// --- LIVE TIMESTAMP (day, date, time — seconds re-animate on every tick) ---
+function startUserClock() {
+    updateUserTimestamp();
+    setInterval(updateUserTimestamp, 1000);
+}
+
+function updateUserTimestamp() {
+    const el = document.getElementById('userTimestamp');
+    if (!el) return;
+
+    const now = new Date();
+    const dayName = now.toLocaleDateString(undefined, { weekday: 'long' });
+    const dateStr = now.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+
+    let hours = now.getHours();
+    const period = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const seconds = now.getSeconds().toString().padStart(2, '0');
+
+    el.innerHTML = `${dayName}, ${dateStr} <span class="timestamp-divider">•</span> ${hours}:${minutes}<span class="timestamp-seconds" id="timestampSeconds">:${seconds}</span> ${period}`;
+
+    // Restart the pulse animation each tick so the seconds visibly "beat"
+    // in sync with the clock, rather than animating once and going static.
+    const secondsEl = document.getElementById('timestampSeconds');
+    if (secondsEl) {
+        secondsEl.classList.remove('tick');
+        void secondsEl.offsetWidth; // force reflow to restart the CSS animation
+        secondsEl.classList.add('tick');
+    }
+}
+
 // --- SIDEBAR WATERMARK (screenshot deterrent) ---
 // Renders a faint, randomly-generated QR-code-like pattern behind the
 // sidebar. It isn't a real scannable code — it's just visual noise meant
@@ -259,6 +291,7 @@ function handleLogin() {
         document.getElementById('loginOverlay').style.display = 'none';
         document.getElementById('appContainer').style.display = 'flex';
         document.getElementById('userDisplay').textContent = email;
+        startUserClock();
         applySidebarWatermark();
         loadAllExercises();
         
