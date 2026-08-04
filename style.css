@@ -34,6 +34,65 @@ body, html {
     -moz-osx-font-smoothing: grayscale;
 }
 
+/* --- HAMBURGER MENU / OFF-CANVAS SIDEBAR (mobile overlay + desktop collapse) --- */
+.hamburger-btn {
+    display: flex; /* now shown at every breakpoint — collapses sidebar on desktop, opens the overlay on mobile */
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    z-index: 1100;
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--primary);
+    box-shadow: var(--shadow-md);
+    font-size: 1.4rem;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.hamburger-btn:hover {
+    background: var(--primary-light);
+}
+
+.sidebar-close-btn {
+    display: none; /* shown only in the mobile media query below, inside the panel */
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1.6rem;
+    cursor: pointer;
+    border-radius: 6px;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebar-close-btn:hover {
+    background: var(--surface-hover);
+    color: var(--primary);
+}
+
+.sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 1150;
+}
+
+.sidebar-backdrop.show {
+    display: block;
+}
+
 /* --- 2. LOGIN OVERLAY (Full Screen) --- */
 .login-overlay {
     position: fixed;
@@ -85,17 +144,18 @@ body, html {
     margin-bottom: 0.5rem;
 }
 
+.login-card h1,
 .login-card h2 {
     margin: 0 0 0.5rem 0;
     color: var(--primary);
     font-weight: 600;
-    font-size: 1.8rem;
+    font-size: clamp(1.3rem, 5vw, 1.8rem);
     letter-spacing: -0.5px;
 }
 
 .login-card p {
     color: var(--text-secondary);
-    font-size: 0.95rem;
+    font-size: clamp(0.85rem, 2.4vw, 0.95rem);
     line-height: 1.6;
     margin: 1rem 0 2rem 0;
 }
@@ -168,6 +228,35 @@ body, html {
     box-shadow: var(--shadow-sm);
 }
 
+/* Desktop: the sidebar is a normal in-layout panel (visible by default),
+   so collapsing it means shrinking it to nothing rather than sliding it
+   off-canvas like the mobile overlay does. The .content area is a flex
+   sibling, so it reflows to fill the freed space automatically as this
+   transitions. */
+@media (min-width: 769px) {
+    .sidebar {
+        padding-top: 4.5rem; /* clears the fixed hamburger button, always visible now */
+        overflow-x: hidden;
+        transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                    padding 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                    opacity 0.2s ease;
+    }
+
+    .sidebar.sidebar-collapsed {
+        width: 0;
+        min-width: 0;
+        padding: 4.5rem 0 1.5rem 0;
+        border-right: none;
+        opacity: 0;
+    }
+
+    /* Content shifts flush to the left edge once the sidebar collapses,
+       right under the fixed hamburger button — give it clearance there. */
+    .sidebar.sidebar-collapsed + .content {
+        padding-top: 4.5rem;
+    }
+}
+
 .user-info {
     padding-bottom: 1rem;
     border-bottom: 2px solid var(--border-color);
@@ -214,7 +303,7 @@ body, html {
     margin: 0.4rem 0;
     cursor: pointer;
     border-radius: 8px;
-    font-size: 0.9rem;
+    font-size: clamp(0.82rem, 2.2vw, 0.9rem);
     font-weight: 500;
     transition: var(--transition);
     position: relative;
@@ -263,7 +352,7 @@ body, html {
     padding: 2rem;
     border-radius: 12px;
     font-family: 'Roboto Mono', monospace;
-    font-size: 1.1rem;
+    font-size: clamp(0.85rem, 2.3vw, 1.1rem);
     line-height: 1.8;
     margin: 1.5rem 0;
     box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
@@ -304,13 +393,13 @@ body, html {
 .card-header h2 {
     margin: 0 0 0.5rem 0;
     color: var(--primary);
-    font-size: 1.8rem;
+    font-size: clamp(1.25rem, 4.5vw, 1.8rem);
     font-weight: 700;
 }
 
 .card-header p {
     color: var(--text-secondary);
-    font-size: 0.95rem;
+    font-size: clamp(0.85rem, 2.4vw, 0.95rem);
     margin: 0;
     line-height: 1.5;
 }
@@ -330,7 +419,7 @@ body, html {
     border: none;
     padding: 12px 28px;
     border-radius: 8px;
-    font-size: 0.95rem;
+    font-size: clamp(0.82rem, 2.3vw, 0.95rem);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -385,7 +474,7 @@ body, html {
     cursor: pointer;
     text-transform: uppercase;
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: clamp(0.78rem, 2.2vw, 0.9rem);
     letter-spacing: 0.5px;
     transition: var(--transition);
     position: relative;
@@ -536,29 +625,55 @@ body, html {
     .main-layout {
         flex-direction: column;
     }
-    
+
+    /* Off-canvas sidebar: hidden off the left edge by default, slides in
+       as a full-height overlay when toggled open via the hamburger button.
+       Replaces the old horizontal-scrolling-strip layout, which ate
+       vertical space that the coding activity needs on small screens. */
     .sidebar {
-        width: 100%;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 82%;
+        max-width: 320px;
+        height: 100vh;
         border-right: none;
-        border-bottom: 1px solid var(--border-color);
-        padding: 1rem;
-        max-height: 150px;
-        overflow-x: auto;
+        border-bottom: none;
+        padding: 1.5rem;
+        max-height: none;
+        overflow-x: visible;
+        overflow-y: auto;
+        z-index: 1200;
+        box-shadow: var(--shadow-lg);
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    
+
+    .sidebar.sidebar-open {
+        transform: translateX(0);
+    }
+
     .sidebar ul {
-        display: flex;
-        gap: 0.5rem;
-        overflow-x: auto;
+        display: block;
+        overflow-x: visible;
     }
-    
+
     .sidebar li {
-        white-space: nowrap;
-        flex-shrink: 0;
+        white-space: normal;
+        flex-shrink: initial;
     }
-    
+
+    .hamburger-btn {
+        display: flex;
+    }
+
+    .sidebar-close-btn {
+        display: flex;
+    }
+
+    /* Room so page content doesn't sit under the fixed hamburger button */
     .content {
-        padding: 1rem;
+        padding: 4.5rem 1rem 1rem 1rem;
     }
     
     .login-card {
@@ -569,6 +684,16 @@ body, html {
     .modal {
         min-width: 85vw;
         max-width: 90vw;
+    }
+
+    /* These modals set their own min-width later in the file with equal
+       specificity, so they were winning over the rule above and overflowing
+       narrow screens. Re-assert the mobile sizing here. */
+    .score-summary-modal,
+    .alert-modal {
+        min-width: 85vw;
+        max-width: 90vw;
+        width: 90vw;
     }
     
     .score-circle {
@@ -582,6 +707,71 @@ body, html {
     
     .code-ordering-area {
         border-radius: 0;
+    }
+
+    /* --- Item 3 (revised): rows no longer grow/wrap for long code lines.
+       Each row stays a single fixed-height line and scrolls horizontally
+       (see base .draggable-line overflow-x: auto) so the "one line per
+       line of code" layout of the activity is preserved even when a line
+       is too long for the screen. --- */
+    .draggable-line {
+        height: 3.25rem;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 0.6rem;
+    }
+
+    .line-number {
+        height: 3.25rem;
+        line-height: 3.25rem;
+        min-width: 1.5rem;
+        padding-right: 0.3rem;
+    }
+
+    .line-numbers-column {
+        min-width: 1.5rem;
+    }
+
+    /* Up/down buttons stacked vertically instead of side-by-side reclaim
+       roughly 40px of row width on narrow screens, leaving more room for
+       the code itself before it needs to scroll. */
+    .updown-buttons {
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .updown-buttons button {
+        width: 26px;
+        height: 22px;
+        font-size: 0.65rem;
+    }
+
+    .modal-close {
+        font-size: 2rem;
+        padding: 8px 12px;
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .settings-icon {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    /* --- Item 4: tighter code editor on phones --- */
+    .code-editor {
+        margin: 0;
+        padding: 0;
+        font-size: 0.95rem;
+        line-height: 1.6;
+    }
+
+    .card-header h2 {
+        font-size: 1.4rem;
+    }
+
+    .actions {
+        gap: 0.6rem;
     }
 }
 
@@ -616,7 +806,7 @@ body, html {
 /* Code ordering container with fixed line numbers and draggable code */
 .code-ordering-container {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.25rem;
     margin-top: 1rem;
 }
 
@@ -628,19 +818,21 @@ body, html {
     background: #f9f9f9;
     border-right: 1px solid #e0e0e0;
     padding: 0;
-    min-width: 3rem;
+    min-width: 2rem;
     flex-shrink: 0;
     border-radius: 8px 0 0 8px;
 }
 
-/* Individual line number (simple, no hover effects) */
+/* Individual line number (simple, no hover effects). Deliberately smaller
+   than the code font — it's reference info, not part of the exercise, so
+   it shouldn't compete for width or visual weight. */
 .line-number {
-    height: 3rem;
-    line-height: 3rem;
+    height: 3.25rem;
+    line-height: 3.25rem;
     text-align: right;
-    padding-right: 0.75rem;
+    padding-right: 0.4rem;
     font-family: 'Roboto Mono', monospace;
-    font-size: 0.85rem;
+    font-size: clamp(0.6rem, 1.6vw, 0.7rem);
     color: #999;
     background: #f9f9f9;
     user-select: none;
@@ -677,9 +869,12 @@ body, html {
     cursor: move;
     user-select: none;
     transition: var(--transition);
-    height: 3rem;
+    height: 3.25rem;
     box-sizing: border-box;
     position: relative;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
 }
 
 .draggable-line:last-child {
@@ -698,6 +893,14 @@ body, html {
     opacity: 0.4;
     transform: scale(0.98);
     background: rgba(98, 0, 238, 0.05);
+}
+
+/* Applied while a row slides into place after an up/down button move
+   (see animateRowSwap in script.js). The lift makes it clear which two
+   rows just traded places. */
+.draggable-line.swapping {
+    box-shadow: var(--shadow-md);
+    background: var(--surface-hover);
 }
 
 /* Visual placeholder shown between lines while dragging */
@@ -742,6 +945,57 @@ body, html {
     align-items: center;
 }
 
+.updown-buttons {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Native HTML5 drag-and-drop does not work on touchscreens, so we hide the
+   (non-functional there) drag handle on touch devices — the always-visible
+   up/down buttons above remain available as the reordering method there.
+   Detected via CSS media features rather than JS touch detection, since
+   (pointer: coarse) is what Chrome DevTools device emulation actually
+   sets, and it also covers real touchscreens reliably. */
+@media (pointer: coarse), (any-pointer: coarse), (max-width: 768px) {
+    .drag-handle {
+        display: none;
+    }
+}
+
+.updown-buttons button {
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border-color);
+    background: var(--surface);
+    color: var(--primary);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: var(--transition);
+}
+
+.updown-buttons button:hover:not(:disabled) {
+    background: var(--primary-light);
+}
+
+.updown-buttons button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.draggable-line.locked .updown-buttons button {
+    pointer-events: none;
+    opacity: 0.4;
+}
+
 .draggable-line:hover .drag-handle {
     color: var(--primary);
     transform: scale(1.1);
@@ -752,10 +1006,11 @@ body, html {
     color: var(--primary);
 }
 
-/* Jump-to dropdown container */
+/* Jump-to dropdown container — replaced by the always-visible up/down
+   buttons below. Hidden rather than removed from the DOM/JS so it can be
+   restored easily if needed later. */
 .jump-to-container {
-    flex-shrink: 0;
-    margin-left: auto;
+    display: none;
 }
 
 .jump-to-select {
@@ -794,10 +1049,9 @@ body, html {
 
 .draggable-line code {
     font-family: 'Roboto Mono', monospace;
-    font-size: 0.95rem;
+    font-size: clamp(0.78rem, 2.2vw, 0.95rem);
     color: var(--text-main);
-    white-space: pre-wrap;
-    word-break: break-word;
+    white-space: pre;
     flex: 1;
 }
 
@@ -837,7 +1091,7 @@ body, html {
     margin: 4px 0;
     cursor: pointer;
     border-radius: 4px;
-    font-size: 0.9rem;
+    font-size: clamp(0.82rem, 2.2vw, 0.9rem);
     font-weight: 500;
 }
 
@@ -936,7 +1190,7 @@ body, html {
 .modal-header h2 {
     margin: 0;
     color: var(--primary);
-    font-size: 1.3rem;
+    font-size: clamp(1.1rem, 3.5vw, 1.3rem);
     font-weight: 700;
 }
 
