@@ -131,19 +131,25 @@
     <div id="alertOverlay" class="modal-overlay" style="display: none;" onclick="closeAlertModal()" aria-hidden="true"></div>
 
     <div id="appContainer" class="main-layout" style="display: none;">
-        <nav class="sidebar" role="navigation" aria-label="Exercise list">
+        <button id="sidebarToggleBtn" class="hamburger-btn" onclick="toggleSidebar()" aria-label="Show exercise list" aria-expanded="false" aria-controls="sidebarNav">
+            <span class="hamburger-icon" aria-hidden="true">☰</span>
+        </button>
+        <div id="sidebarBackdrop" class="sidebar-backdrop" onclick="closeSidebar()" aria-hidden="true"></div>
+
+        <nav id="sidebarNav" class="sidebar" role="navigation" aria-label="Exercise list">
+            <button id="sidebarCloseBtn" class="sidebar-close-btn" onclick="closeSidebar()" aria-label="Close exercise list">×</button>
             <div class="user-info">
                 <small>Logged in as:</small>
                 <div id="userDisplay" style="font-weight: 500; font-size: 0.8rem;" aria-label="Current user"></div>
             </div>
             <hr aria-hidden="true">
+            <div id="summaryPanel" class="summary-panel" role="status" aria-live="polite" aria-label="Total points">
+                <div class="summary-label">Total Points</div>
+                <div id="summaryValue" class="summary-value">0 / 0</div>
+            </div>
             <h3>Exercises</h3>
             <ul id="fileList" role="list"></ul>
             <div class="sidebar-bottom">
-                <div id="summaryPanel" class="summary-panel" role="status" aria-live="polite" aria-label="Total points">
-                    <div class="summary-label">Total Points</div>
-                    <div id="summaryValue" class="summary-value">0 / 0</div>
-                </div>
                 <div style="padding-top: 1rem;">
                     <button id="downloadBtn" class="secondary-btn" onclick="exportProgress()" aria-label="Download session results">📥 Download Results</button>
                 </div>
