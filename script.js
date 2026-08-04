@@ -48,6 +48,11 @@ window.onload = async function() {
     // hamburger button's label needs to match whichever is current.
     initSidebarToggleLabel();
 
+    // Sample output toggle defaults to ON on desktop (room to show it
+    // automatically) and OFF on mobile (screen space is tight) — the
+    // student can still flip it manually either way afterward.
+    initSampleToggleState();
+
     try {
         const res = await fetch('students.csv');
         const text = await res.text();
@@ -75,6 +80,78 @@ function closeSidebar() {
     document.getElementById('sidebarToggleBtn').setAttribute('aria-expanded', 'false');
     document.getElementById('sidebarToggleBtn').setAttribute('aria-label', 'Show exercise list');
     document.body.style.overflow = '';
+}
+
+// --- SIDEBAR WATERMARK (screenshot deterrent) ---
+// Renders a faint, randomly-generated QR-code-like pattern behind the
+// sidebar. It isn't a real scannable code — it's just visual noise meant
+// to make it obvious/awkward if a student tries to pass off an edited
+// screenshot of their scores as the genuine app, since a fresh random
+// pattern is drawn every login and a doctored screenshot would need to
+// fake it convincingly too.
+function classifyQrModule(x, y, moduleCount) {
+    // Three finder-pattern corners (top-left, top-right, bottom-left),
+    // each with a 1-module quiet border, like a real QR code.
+    const finderZones = [
+        { x0: 0, y0: 0 },
+        { x0: moduleCount - 7, y0: 0 },
+        { x0: 0, y0: moduleCount - 7 }
+    ];
+
+    for (const zone of finderZones) {
+        const lx = x - zone.x0;
+        const ly = y - zone.y0;
+        if (lx >= -1 && lx <= 7 && ly >= -1 && ly <= 7) {
+            if (lx < 0 || lx > 6 || ly < 0 || ly > 6) return 'blank'; // quiet zone
+            const onBorder = (lx === 0 || lx === 6 || ly === 0 || ly === 6);
+            const inCenter = (lx >= 2 && lx <= 4 && ly >= 2 && ly <= 4);
+            return (onBorder || inCenter) ? 'filled' : 'blank';
+        }
+    }
+
+    // Timing strips: alternating modules along row/column 6, outside the finders
+    if (y === 6 || x === 6) {
+        return ((x + y) % 2 === 0) ? 'filled' : 'blank';
+    }
+
+    return 'data';
+}
+
+function generateQrWatermarkDataUrl() {
+    const moduleCount = 21;
+    const moduleSize = 6;
+    const size = moduleCount * moduleSize;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = 'rgba(98, 0, 238, 0.05)'; // subtle — matches the theme's primary color
+
+    for (let y = 0; y < moduleCount; y++) {
+        for (let x = 0; x < moduleCount; x++) {
+            const type = classifyQrModule(x, y, moduleCount);
+            let filled;
+            if (type === 'filled') filled = true;
+            else if (type === 'blank') filled = false;
+            else filled = Math.random() < 0.42; // random "data" noise
+
+            if (filled) {
+                ctx.fillRect(x * moduleSize, y * moduleSize, moduleSize, moduleSize);
+            }
+        }
+    }
+
+    return canvas.toDataURL('image/png');
+}
+
+function applySidebarWatermark() {
+    const sidebar = document.getElementById('sidebarNav');
+    if (!sidebar) return;
+    sidebar.style.backgroundImage = `url(${generateQrWatermarkDataUrl()})`;
+    sidebar.style.backgroundRepeat = 'repeat';
 }
 
 // --- SIDEBAR COLLAPSE (desktop: in-layout panel, no backdrop/scroll-lock) ---
@@ -129,6 +206,24 @@ function initSidebarToggleLabel() {
     }
 }
 
+// --- SAMPLE OUTPUT TOGGLE (default ON on desktop, OFF on mobile) ---
+function initSampleToggleState() {
+    const toggle = document.getElementById('sampleOutputToggle');
+    if (!toggle) return;
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    toggle.checked = !isMobile;
+}
+
+function handleSampleToggleChange() {
+    const toggle = document.getElementById('sampleOutputToggle');
+    if (!toggle || !currentFile) return;
+    if (toggle.checked) {
+        showSampleOutput(currentFile);
+    } else {
+        closeSampleOutputModal();
+    }
+}
+
 // Close the off-canvas panel automatically after picking an exercise, but
 // only on screens narrow enough that the sidebar is an overlay in the
 // first place — on desktop the sidebar stays put (collapsing is a manual,
@@ -147,6 +242,10 @@ document.addEventListener('keydown', (e) => {
         if (sidebar && sidebar.classList.contains('sidebar-open')) {
             closeSidebar();
         }
+        const consolePanel = document.getElementById('sampleOutputPanel');
+        if (consolePanel && consolePanel.classList.contains('open')) {
+            closeSampleOutputModal();
+        }
     }
 });
 
@@ -160,6 +259,7 @@ function handleLogin() {
         document.getElementById('loginOverlay').style.display = 'none';
         document.getElementById('appContainer').style.display = 'flex';
         document.getElementById('userDisplay').textContent = email;
+        applySidebarWatermark();
         loadAllExercises();
         
         // Start timer if in exam mode
@@ -507,15 +607,22 @@ function switchExercise(name, el) {
     updateSummaryPanel();
     document.getElementById('feedback').textContent = "";
 
-    // Configure sample output button for this exercise
-    const viewBtn = document.getElementById('viewSampleBtn');
-    if (viewBtn) {
-        if (ex && ex.sampleOutput && ex.sampleOutput.trim().length > 0) {
-            viewBtn.disabled = false;
-            viewBtn.onclick = () => showSampleOutput(currentFile);
+    // Configure sample output toggle for this exercise. If the toggle is
+    // already on when an exercise with sample output is selected, the
+    // console panel opens (or refreshes its content) automatically;
+    // otherwise it stays closed until the student turns the toggle on.
+    const sampleToggle = document.getElementById('sampleOutputToggle');
+    const sampleToggleControl = document.getElementById('sampleToggleControl');
+    const hasSampleOutput = !!(ex && ex.sampleOutput && ex.sampleOutput.trim().length > 0);
+    if (sampleToggle) {
+        sampleToggle.disabled = !hasSampleOutput;
+        if (sampleToggleControl) {
+            sampleToggleControl.classList.toggle('disabled', !hasSampleOutput);
+        }
+        if (hasSampleOutput && sampleToggle.checked) {
+            showSampleOutput(name);
         } else {
-            viewBtn.disabled = true;
-            viewBtn.onclick = null;
+            closeSampleOutputModal();
         }
     }
 }
@@ -1190,24 +1297,44 @@ function closeAlertModal() {
     document.getElementById('alertOverlay').style.display = 'none';
 }
 
-// --- SAMPLE OUTPUT MODAL ---
+// --- SAMPLE OUTPUT CONSOLE PANEL (slides in from the right) ---
 function showSampleOutput(fileName) {
     const ex = exerciseData[fileName];
-    const modal = document.getElementById('sampleOutputModal');
+    const panel = document.getElementById('sampleOutputPanel');
     const overlay = document.getElementById('sampleOutputOverlay');
     const content = document.getElementById('sampleOutputContent');
-    if (!ex || !modal || !overlay || !content) return;
+    if (!ex || !panel || !overlay || !content) return;
 
     content.textContent = ex.sampleOutput && ex.sampleOutput.length ? ex.sampleOutput : 'No sample output available.';
-    modal.style.display = 'block';
+
     overlay.style.display = 'block';
+    panel.setAttribute('aria-hidden', 'false');
+    overlay.setAttribute('aria-hidden', 'false');
+    // Force the transform to its initial state before adding .open so the
+    // slide-in transition actually plays (rather than snapping into place)
+    // even if the panel was just re-shown right after being closed.
+    requestAnimationFrame(() => {
+        panel.classList.add('open');
+    });
 }
 
 function closeSampleOutputModal() {
-    const modal = document.getElementById('sampleOutputModal');
+    const panel = document.getElementById('sampleOutputPanel');
     const overlay = document.getElementById('sampleOutputOverlay');
-    if (modal) modal.style.display = 'none';
-    if (overlay) overlay.style.display = 'none';
+    if (!panel) return;
+
+    panel.classList.remove('open');
+    panel.setAttribute('aria-hidden', 'true');
+    if (overlay) {
+        overlay.setAttribute('aria-hidden', 'true');
+        // Wait for the slide-out transition to finish before hiding the
+        // overlay, otherwise it disappears abruptly mid-animation.
+        const onTransitionEnd = () => {
+            overlay.style.display = 'none';
+            panel.removeEventListener('transitionend', onTransitionEnd);
+        };
+        panel.addEventListener('transitionend', onTransitionEnd);
+    }
 }
 
 function calculateTotalScore() {
