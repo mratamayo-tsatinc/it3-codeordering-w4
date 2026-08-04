@@ -36,6 +36,18 @@ let timerIntervalId = null;
 let timeRemaining = 0; // in seconds
 
 window.onload = async function() {
+    // Native HTML5 drag-and-drop (used for line ordering) does not fire on
+    // touchscreens. Flag touch devices so CSS can hide the drag handle and
+    // reveal the Up/Down buttons and Jump-to dropdown instead.
+    const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    if (isTouchDevice) {
+        document.body.classList.add('touch-device');
+    }
+
+    // The sidebar defaults to open on desktop and closed on mobile, so the
+    // hamburger button's label needs to match whichever is current.
+    initSidebarToggleLabel();
+
     try {
         const res = await fetch('students.csv');
         const text = await res.text();
@@ -46,6 +58,97 @@ window.onload = async function() {
         });
     } catch (err) { console.error("Database failed to load."); }
 };
+
+// --- HAMBURGER MENU / OFF-CANVAS SIDEBAR (mobile: overlay) ---
+function openSidebar() {
+    document.getElementById('sidebarNav').classList.add('sidebar-open');
+    document.getElementById('sidebarBackdrop').classList.add('show');
+    document.getElementById('sidebarToggleBtn').setAttribute('aria-expanded', 'true');
+    document.getElementById('sidebarToggleBtn').setAttribute('aria-label', 'Hide exercise list');
+    // Prevent the page behind the panel from scrolling while it's open
+    document.body.style.overflow = 'hidden';
+}
+
+function closeSidebar() {
+    document.getElementById('sidebarNav').classList.remove('sidebar-open');
+    document.getElementById('sidebarBackdrop').classList.remove('show');
+    document.getElementById('sidebarToggleBtn').setAttribute('aria-expanded', 'false');
+    document.getElementById('sidebarToggleBtn').setAttribute('aria-label', 'Show exercise list');
+    document.body.style.overflow = '';
+}
+
+// --- SIDEBAR COLLAPSE (desktop: in-layout panel, no backdrop/scroll-lock) ---
+function collapseDesktopSidebar() {
+    document.getElementById('sidebarNav').classList.add('sidebar-collapsed');
+    document.getElementById('sidebarToggleBtn').setAttribute('aria-expanded', 'false');
+    document.getElementById('sidebarToggleBtn').setAttribute('aria-label', 'Show exercise list');
+}
+
+function expandDesktopSidebar() {
+    document.getElementById('sidebarNav').classList.remove('sidebar-collapsed');
+    document.getElementById('sidebarToggleBtn').setAttribute('aria-expanded', 'true');
+    document.getElementById('sidebarToggleBtn').setAttribute('aria-label', 'Hide exercise list');
+}
+
+// Single entry point for the hamburger button. Behavior depends on viewport:
+// on mobile the sidebar is an off-canvas overlay (hidden by default), on
+// desktop it's a normal layout panel (visible by default) that can now be
+// collapsed to reclaim horizontal space.
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebarNav');
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+
+    if (isMobile) {
+        if (sidebar.classList.contains('sidebar-open')) {
+            closeSidebar();
+        } else {
+            openSidebar();
+        }
+    } else {
+        if (sidebar.classList.contains('sidebar-collapsed')) {
+            expandDesktopSidebar();
+        } else {
+            collapseDesktopSidebar();
+        }
+    }
+}
+
+// Set the hamburger button's initial label to match each breakpoint's
+// default sidebar state (open on desktop, closed on mobile) — otherwise
+// the aria-label baked into the HTML would only be correct for mobile.
+function initSidebarToggleLabel() {
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    const btn = document.getElementById('sidebarToggleBtn');
+    if (!btn) return;
+    if (isMobile) {
+        btn.setAttribute('aria-expanded', 'false');
+        btn.setAttribute('aria-label', 'Show exercise list');
+    } else {
+        btn.setAttribute('aria-expanded', 'true');
+        btn.setAttribute('aria-label', 'Hide exercise list');
+    }
+}
+
+// Close the off-canvas panel automatically after picking an exercise, but
+// only on screens narrow enough that the sidebar is an overlay in the
+// first place — on desktop the sidebar stays put (collapsing is a manual,
+// explicit choice there, not something exercise selection should trigger).
+function closeSidebarIfMobile() {
+    if (window.matchMedia('(max-width: 768px)').matches) {
+        closeSidebar();
+    }
+}
+
+// Close on Escape for keyboard users (mobile overlay only — desktop's
+// collapsed sidebar isn't a modal, so Escape shouldn't touch it)
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const sidebar = document.getElementById('sidebarNav');
+        if (sidebar && sidebar.classList.contains('sidebar-open')) {
+            closeSidebar();
+        }
+    }
+});
 
 function handleLogin() {
     const email = document.getElementById('emailInput').value.trim();
@@ -90,7 +193,10 @@ async function loadAllExercises() {
                 <span class="nav-score" id="score-${safeId}">0/${exerciseData[fileName].answers.length}</span>
             `;
             
-            li.onclick = () => switchExercise(fileName, li);
+            li.onclick = () => {
+                switchExercise(fileName, li);
+                closeSidebarIfMobile();
+            };
             list.appendChild(li);
 
             // Initialize sidebar score and summary
@@ -204,6 +310,10 @@ function parseJavaCode(raw) {
         
         codeAreaHtml += `<div class="draggable-line" draggable="true" data-original-idx="${originalIdx}">
                             <span class="drag-handle">⋮⋮</span>
+                            <div class="updown-buttons">
+                                <button type="button" class="move-up-btn" aria-label="Move line up">▲</button>
+                                <button type="button" class="move-down-btn" aria-label="Move line down">▼</button>
+                            </div>
                             <code>${line}</code>
                         </div>`;
     });
@@ -277,6 +387,7 @@ function setInputsDisabled(disabled) {
                 line.removeAttribute('title');
             }
         });
+        refreshUpDownButtonStates(disabled);
     }
     
     // Legacy: handle fill-in-the-blank exercises
@@ -343,6 +454,7 @@ function switchExercise(name, el) {
         setupDragAndDrop();
         setupJumpToUI(name);
         restoreUserOrder(name);
+        setupUpDownButtons();
     } else {
         // Legacy: fill-in-the-blank handling
         const inputs = display.querySelectorAll('.code-input');
@@ -541,6 +653,7 @@ function resetCurrentExercise() {
         });
         setupDragAndDrop();
         setupJumpToUI(currentFile);
+        setupUpDownButtons();
     } else {
         // Legacy: fill-in-the-blank reset
         ex.userProgress = ex.userProgress.map(() => "");
@@ -892,6 +1005,119 @@ function restoreUserOrder(fileName) {
 
 let draggedElement = null;
 
+// --- UP/DOWN BUTTONS (touch-friendly alternative to drag-and-drop) ---
+function setupUpDownButtons() {
+    const orderingArea = document.getElementById('orderingArea');
+    if (!orderingArea) return;
+
+    const draggableLines = orderingArea.querySelectorAll('.draggable-line');
+
+    draggableLines.forEach(lineEl => {
+        const upBtn = lineEl.querySelector('.move-up-btn');
+        const downBtn = lineEl.querySelector('.move-down-btn');
+        if (!upBtn || !downBtn) return;
+
+        // Avoid stacking duplicate listeners if this is called more than once
+        upBtn.replaceWith(upBtn.cloneNode(true));
+        downBtn.replaceWith(downBtn.cloneNode(true));
+    });
+
+    // Re-query after cloning, then attach fresh listeners
+    orderingArea.querySelectorAll('.move-up-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            moveLineByOffset(btn.closest('.draggable-line'), -1);
+        });
+    });
+    orderingArea.querySelectorAll('.move-down-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            moveLineByOffset(btn.closest('.draggable-line'), 1);
+        });
+    });
+
+    refreshUpDownButtonStates();
+}
+
+function moveLineByOffset(lineEl, offset) {
+    if (!lineEl || exerciseData[currentFile]?.locked) return;
+
+    const orderingArea = document.getElementById('orderingArea');
+    const allLines = Array.from(orderingArea.querySelectorAll('.draggable-line'));
+    const currentIdx = allLines.indexOf(lineEl);
+    const targetIdx = currentIdx + offset;
+
+    if (targetIdx < 0 || targetIdx >= allLines.length) return; // out of bounds
+
+    const targetEl = allLines[targetIdx];
+
+    // Capture each affected row's position before the DOM move (FLIP: First)
+    const movedFirstRect = lineEl.getBoundingClientRect();
+    const targetFirstRect = targetEl.getBoundingClientRect();
+
+    if (offset < 0) {
+        orderingArea.insertBefore(lineEl, allLines[targetIdx]);
+    } else {
+        orderingArea.insertBefore(lineEl, targetEl.nextSibling);
+    }
+
+    // Animate both the moved row and the row it displaced sliding into place
+    animateRowSwap(lineEl, movedFirstRect);
+    animateRowSwap(targetEl, targetFirstRect);
+
+    refreshUpDownButtonStates();
+}
+
+// Slides an element from its previous position (firstRect) to wherever it
+// now sits in the DOM (Last), using the FLIP technique: Invert the visual
+// position with a transform, then Play by transitioning that transform away.
+function animateRowSwap(el, firstRect) {
+    const lastRect = el.getBoundingClientRect();
+    const deltaY = firstRect.top - lastRect.top;
+
+    if (!deltaY) return; // already in place, nothing to animate
+
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${deltaY}px)`;
+    el.style.zIndex = '5';
+    el.classList.add('swapping');
+
+    // Wait a frame so the browser paints the inverted position before we
+    // transition it away, otherwise the transform jump itself would animate.
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            el.style.transition = 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)';
+            el.style.transform = '';
+        });
+    });
+
+    const cleanup = () => {
+        el.style.transition = '';
+        el.style.zIndex = '';
+        el.classList.remove('swapping');
+        el.removeEventListener('transitionend', cleanup);
+    };
+    el.addEventListener('transitionend', cleanup);
+}
+
+// Disable Up on the first line and Down on the last line.
+// forceLocked lets callers (like setInputsDisabled) specify the lock state
+// directly, since ex.locked isn't always updated yet at call time.
+function refreshUpDownButtonStates(forceLocked) {
+    const orderingArea = document.getElementById('orderingArea');
+    if (!orderingArea) return;
+
+    const allLines = Array.from(orderingArea.querySelectorAll('.draggable-line'));
+    const locked = forceLocked !== undefined ? forceLocked : exerciseData[currentFile]?.locked;
+
+    allLines.forEach((lineEl, idx) => {
+        const upBtn = lineEl.querySelector('.move-up-btn');
+        const downBtn = lineEl.querySelector('.move-down-btn');
+        if (upBtn) upBtn.disabled = locked || idx === 0;
+        if (downBtn) downBtn.disabled = locked || idx === allLines.length - 1;
+    });
+}
+
 // --- JUMP-TO POSITIONING UI ---
 function setupJumpToUI(fileName) {
     const orderingArea = document.getElementById('orderingArea');
@@ -947,6 +1173,8 @@ function moveLineToPosition(container, draggableElement, targetIdx) {
         const targetElement = allDraggableLines[targetIdx];
         container.insertBefore(draggableElement, targetElement);
     }
+
+    refreshUpDownButtonStates();
 }
 
 // --- ALERT AND SCORE SUMMARY MODALS ---
