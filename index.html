@@ -181,25 +181,31 @@
 
                 <div class="actions">
                     <button id="actionButton" class="primary-btn">Verify Code</button>
-                    <button id="viewSampleBtn" class="secondary-btn" aria-label="View sample output for this exercise">View Sample Output</button>
+                    <label id="sampleToggleControl" class="toggle-control">
+                        <span class="toggle-switch">
+                            <input type="checkbox" id="sampleOutputToggle" checked onchange="handleSampleToggleChange()" aria-label="Show sample output for this exercise">
+                            <span class="toggle-slider" aria-hidden="true"></span>
+                        </span>
+                        <span class="toggle-label">Show Sample Output</span>
+                    </label>
                     <div id="feedback" role="status" aria-live="polite" aria-atomic="true"></div>
                 </div>
             </div>
         </main>
     </div>
-    <!-- Sample Output Modal -->
-    <div id="sampleOutputModal" class="modal" style="display:none;" role="dialog" aria-labelledby="sampleOutputTitle" aria-hidden="true">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="sampleOutputTitle">Sample Output</h2>
-                <button class="modal-close" onclick="closeSampleOutputModal()" aria-label="Close sample output">×</button>
+    <!-- Sample Output Console Panel (slides in from the right) -->
+    <div id="sampleOutputPanel" class="console-panel" role="dialog" aria-labelledby="sampleOutputTitle" aria-hidden="true">
+        <div class="console-titlebar">
+            <div class="console-traffic-lights" aria-hidden="true">
+                <span class="console-dot dot-red"></span>
+                <span class="console-dot dot-yellow"></span>
+                <span class="console-dot dot-green"></span>
             </div>
-            <div class="modal-body">
-                <pre id="sampleOutputContent" style="white-space:pre-wrap; font-family: 'Roboto Mono', monospace; overflow-x: auto; background: #f5f5f5; padding: 1rem; border-radius: 8px;"></pre>
-            </div>
-            <div class="modal-footer">
-                <button class="primary-btn" onclick="closeSampleOutputModal()">Close</button>
-            </div>
+            <h2 id="sampleOutputTitle" class="console-title">Console Output</h2>
+            <button class="console-close-btn" onclick="closeSampleOutputModal()" aria-label="Close sample output">×</button>
+        </div>
+        <div class="console-body">
+            <pre id="sampleOutputContent" class="console-text"></pre>
         </div>
     </div>
     <div id="sampleOutputOverlay" class="modal-overlay" style="display:none;" onclick="closeSampleOutputModal()" aria-hidden="true"></div>
