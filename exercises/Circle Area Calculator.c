@@ -3,6 +3,7 @@
  * Sample Output:
  * Enter radius: 5
  * The area is: 78.54
+ *
  */
 
 #include <stdio.h>
