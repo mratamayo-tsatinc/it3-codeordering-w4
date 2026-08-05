@@ -4,6 +4,7 @@
  * Current Balance: 1000
  * Enter amount to withdraw: 200
  * New balance: 800
+ *
  */
 
 #include <stdio.h>
