@@ -29,7 +29,8 @@ let currentUser = "";
 // Settings and Mode Management
 let appSettings = {
     mode: 'practice', // 'practice' or 'exam'
-    timerMinutes: 15
+    timerMinutes: 15,
+    autoShowSample: true // whether the console panel auto-opens when an exercise has sample output; device-based default set below
 };
 
 let timerIntervalId = null;
@@ -48,10 +49,13 @@ window.onload = async function() {
     // hamburger button's label needs to match whichever is current.
     initSidebarToggleLabel();
 
-    // Sample output toggle defaults to ON on desktop (room to show it
-    // automatically) and OFF on mobile (screen space is tight) — the
-    // student can still flip it manually either way afterward.
-    initSampleToggleState();
+    // The global "auto-show sample output" setting defaults to ON on
+    // desktop (room to show it automatically) and OFF on mobile (screen
+    // space is tight). It's a one-time default only — from here on it's a
+    // normal setting the student can flip in the Settings modal, and the
+    // drawer tab is always available to pull the console into view by hand
+    // regardless of this setting.
+    initSampleAutoShowDefault();
 
     try {
         const res = await fetch('students.csv');
@@ -102,7 +106,7 @@ function updateUserTimestamp() {
     const minutes = now.getMinutes().toString().padStart(2, '0');
     const seconds = now.getSeconds().toString().padStart(2, '0');
 
-    el.innerHTML = `${dayName}, ${dateStr} <span class="timestamp-divider">•</span> ${hours}:${minutes}<span class="timestamp-seconds" id="timestampSeconds">:${seconds}</span> ${period}`;
+    el.innerHTML = `<div class="timestamp-date">${dayName}, ${dateStr}</div><div class="timestamp-time">${hours}:${minutes}<span class="timestamp-seconds" id="timestampSeconds">:${seconds}</span> ${period}</div>`;
 
     // Restart the pulse animation each tick so the seconds visibly "beat"
     // in sync with the clock, rather than animating once and going static.
@@ -238,18 +242,22 @@ function initSidebarToggleLabel() {
     }
 }
 
-// --- SAMPLE OUTPUT TOGGLE (default ON on desktop, OFF on mobile) ---
-function initSampleToggleState() {
-    const toggle = document.getElementById('sampleOutputToggle');
-    if (!toggle) return;
+// --- SAMPLE OUTPUT: GLOBAL AUTO-SHOW SETTING ---
+// This is a global preference (configured in the Settings modal) rather
+// than a per-exercise control: it decides whether the console panel opens
+// automatically whenever the student switches to an activity that has
+// sample output. Manually pulling the panel into view for any individual
+// activity is handled separately by the drawer tab.
+function initSampleAutoShowDefault() {
     const isMobile = window.matchMedia('(max-width: 768px)').matches;
-    toggle.checked = !isMobile;
+    appSettings.autoShowSample = !isMobile;
 }
 
-function handleSampleToggleChange() {
-    const toggle = document.getElementById('sampleOutputToggle');
-    if (!toggle || !currentFile) return;
-    if (toggle.checked) {
+function applyAutoShowForCurrentExercise() {
+    if (!currentFile) return;
+    const ex = exerciseData[currentFile];
+    const hasSampleOutput = !!(ex && ex.sampleOutput && ex.sampleOutput.trim().length > 0);
+    if (hasSampleOutput && appSettings.autoShowSample) {
         showSampleOutput(currentFile);
     } else {
         closeSampleOutputModal();
@@ -403,14 +411,35 @@ function parseJavaCode(raw) {
         const markerIndex = comment.search(/Sample Output:/i);
         if (markerIndex >= 0) {
             // Extract everything after the marker up to end of comment
-            const after = comment.slice(markerIndex + 'Sample Output:'.length);
-            // Clean leading '*' and whitespace on each line
-            sampleOutput = after.split('\n').map(l => l.replace(/^\s*\*?\s?/, '')).join('\n').trim();
+            let after = comment.slice(markerIndex + 'Sample Output:'.length);
 
-            // Remove any trailing comment terminator or stray slash-only lines
-            const sampleLines = sampleOutput.split('\n').map(l => l.replace(/\s+$/,''))
-                .filter(l => !/^\s*(?:\*+\/|\/\*+|\/)\s*$/.test(l));
-            sampleOutput = sampleLines.join('\n').trim();
+            // Strip the block comment's closing "*/" (and any whitespace
+            // right before it) from the very end BEFORE splitting into
+            // lines. Doing this first means a genuine blank line the
+            // author intentionally included in the sample output (e.g. a
+            // trailing blank row) can't get confused with — and dropped
+            // along with — the leftover artifact the closer would
+            // otherwise leave behind on its own line.
+            after = after.replace(/\s*\*\/\s*$/, '');
+
+            // Strip only the JavaDoc-style comment prefix from each line: an
+            // optional single leading space, the '*', and at most one space
+            // right after it. Anything beyond that single space is real
+            // indentation belonging to the program's actual output (e.g. an
+            // ASCII-art shape) and must be preserved exactly as-is.
+            let sampleLines = after.split('\n').map(l => l.replace(/^ ?\*\s?/, ''));
+
+            // Drop only the leading blank line produced by the newline
+            // right after "Sample Output:" itself. Any blank line(s)
+            // further in — including a trailing one — are part of the
+            // real output and are left untouched.
+            while (sampleLines.length && sampleLines[0].trim() === '') {
+                sampleLines.shift();
+            }
+
+            // Trailing whitespace on a line doesn't affect how it renders,
+            // so it's safe to trim per line without touching leading spaces.
+            sampleOutput = sampleLines.map(l => l.replace(/\s+$/, '')).join('\n');
         }
 
         // Remove the entire leading comment block from the raw source before parsing lines
@@ -640,24 +669,13 @@ function switchExercise(name, el) {
     updateSummaryPanel();
     document.getElementById('feedback').textContent = "";
 
-    // Configure sample output toggle for this exercise. If the toggle is
-    // already on when an exercise with sample output is selected, the
-    // console panel opens (or refreshes its content) automatically;
-    // otherwise it stays closed until the student turns the toggle on.
-    const sampleToggle = document.getElementById('sampleOutputToggle');
-    const sampleToggleControl = document.getElementById('sampleToggleControl');
-    const hasSampleOutput = !!(ex && ex.sampleOutput && ex.sampleOutput.trim().length > 0);
-    if (sampleToggle) {
-        sampleToggle.disabled = !hasSampleOutput;
-        if (sampleToggleControl) {
-            sampleToggleControl.classList.toggle('disabled', !hasSampleOutput);
-        }
-        if (hasSampleOutput && sampleToggle.checked) {
-            showSampleOutput(name);
-        } else {
-            closeSampleOutputModal();
-        }
-    }
+    // Auto-show/hide the console panel per the global "Sample Output"
+    // setting (Settings modal), which now applies uniformly across every
+    // activity rather than being toggled per exercise. The drawer tab
+    // (updated inside showSampleOutput/closeSampleOutputModal) remains
+    // available for the student to manually pull the panel into view for
+    // this activity regardless of the setting.
+    applyAutoShowForCurrentExercise();
 }
 
 function checkAnswers() {
@@ -871,6 +889,11 @@ function openSettingsModal() {
     // Set current settings in the modal
     document.querySelector(`input[name="mode"][value="${appSettings.mode}"]`).checked = true;
     document.getElementById('timerInput').value = appSettings.timerMinutes;
+
+    const autoShowToggle = document.getElementById('autoShowSampleToggle');
+    if (autoShowToggle) {
+        autoShowToggle.checked = appSettings.autoShowSample;
+    }
     
     // Show/hide timer section based on mode
     const timerSection = document.getElementById('timerSection');
@@ -933,7 +956,18 @@ function saveSettings() {
     }
     
     appSettings.mode = selectedMode;
+
+    const autoShowToggle = document.getElementById('autoShowSampleToggle');
+    if (autoShowToggle) {
+        appSettings.autoShowSample = autoShowToggle.checked;
+    }
+
     closeSettingsModal();
+
+    // Re-apply the (possibly just-changed) auto-show preference to
+    // whatever exercise is currently open, so the console panel reacts
+    // immediately rather than waiting for the next exercise switch.
+    applyAutoShowForCurrentExercise();
     
     // Show toast notification
     showNotification(`Settings saved! Mode: ${selectedMode === 'exam' ? 'Exam (' + timerValue + ' min)' : 'Practice'}`);
@@ -1343,6 +1377,7 @@ function showSampleOutput(fileName) {
     overlay.style.display = 'block';
     panel.setAttribute('aria-hidden', 'false');
     overlay.setAttribute('aria-hidden', 'false');
+    updateConsoleDrawerTab(true);
     // Force the transform to its initial state before adding .open so the
     // slide-in transition actually plays (rather than snapping into place)
     // even if the panel was just re-shown right after being closed.
@@ -1356,18 +1391,55 @@ function closeSampleOutputModal() {
     const overlay = document.getElementById('sampleOutputOverlay');
     if (!panel) return;
 
+    const wasOpen = panel.classList.contains('open');
     panel.classList.remove('open');
     panel.setAttribute('aria-hidden', 'true');
+    updateConsoleDrawerTab(false);
+
     if (overlay) {
         overlay.setAttribute('aria-hidden', 'true');
-        // Wait for the slide-out transition to finish before hiding the
-        // overlay, otherwise it disappears abruptly mid-animation.
-        const onTransitionEnd = () => {
+        if (wasOpen) {
+            // Wait for the slide-out transition to finish before hiding the
+            // overlay, otherwise it disappears abruptly mid-animation.
+            const onTransitionEnd = () => {
+                overlay.style.display = 'none';
+                panel.removeEventListener('transitionend', onTransitionEnd);
+            };
+            panel.addEventListener('transitionend', onTransitionEnd);
+        } else {
+            // Nothing was actually open, so there's no transition to wait
+            // for — hide the overlay immediately instead of leaving a
+            // transitionend listener that would never fire.
             overlay.style.display = 'none';
-            panel.removeEventListener('transitionend', onTransitionEnd);
-        };
-        panel.addEventListener('transitionend', onTransitionEnd);
+        }
     }
+}
+
+// --- CONSOLE DRAWER TAB ---
+// A per-activity handle, always available (when the current exercise has
+// sample output) for pulling the console into view by hand, independent of
+// the global auto-show setting.
+function toggleConsolePanel() {
+    const panel = document.getElementById('sampleOutputPanel');
+    if (!panel || !currentFile) return;
+    if (panel.classList.contains('open')) {
+        closeSampleOutputModal();
+    } else {
+        showSampleOutput(currentFile);
+    }
+}
+
+function updateConsoleDrawerTab(forceOpen) {
+    const tab = document.getElementById('consoleDrawerTab');
+    const panel = document.getElementById('sampleOutputPanel');
+    if (!tab || !panel) return;
+
+    const ex = exerciseData[currentFile];
+    const hasSampleOutput = !!(ex && ex.sampleOutput && ex.sampleOutput.trim().length > 0);
+    const isOpen = forceOpen !== undefined ? forceOpen : panel.classList.contains('open');
+
+    tab.style.display = (hasSampleOutput && !isOpen) ? 'flex' : 'none';
+    tab.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
 }
 
 function calculateTotalScore() {
