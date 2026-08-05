@@ -3,6 +3,7 @@
  * Sample Output:
  * Enter your name: Alice
  * Welcome, Alice!
+ *
  */
 
 #include <stdio.h>
