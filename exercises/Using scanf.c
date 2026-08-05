@@ -2,6 +2,7 @@
  * Using scanf - Demonstrates input reading
  * Sample Output:
  * Enter a number: 42
+ *
  */
 
 #include <stdio.h>
