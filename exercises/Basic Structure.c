@@ -2,6 +2,7 @@
  * Basic Structure
  * Sample Output:
  * End of Activity
+ *
  */
 
 #include <stdio.h>
