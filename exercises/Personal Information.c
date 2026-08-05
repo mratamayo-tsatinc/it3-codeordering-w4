@@ -7,6 +7,7 @@
  * Name: John
  * Age: 25
  * City: Manila
+ *
  */
 
 #include <stdio.h>
