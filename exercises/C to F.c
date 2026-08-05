@@ -3,6 +3,7 @@
  * Sample Output:
  * Enter Celsius: 25
  * Fahrenheit: 77.0
+ *
  */
 
 #include <stdio.h>
