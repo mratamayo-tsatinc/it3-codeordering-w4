@@ -272,34 +272,69 @@ body, html {
     margin-bottom: 0.5rem;
 }
 
-.user-info div {
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--primary);
+/* The email is the primary identity marker in the sidebar, so it's called
+   out as a solid pill badge — bold, colored, and visually the heaviest
+   element in this block. (Previously a bare ".user-info div" rule was
+   selecting every div in here, including the timestamp's — because that
+   descendant selector out-specifies a single class selector, it was
+   quietly overriding the timestamp's own styling too. Scoping this to a
+   dedicated class avoids that clash entirely.) */
+.user-email-pill {
+    display: inline-block;
+    max-width: 100%;
+    padding: 5px 14px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--primary), #7c3aed);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 0.8rem;
+    letter-spacing: 0.2px;
     word-break: break-word;
+    box-shadow: 0 2px 8px rgba(98, 0, 238, 0.28);
 }
 
-/* Live day/date/time readout under the user's email */
+/* Live day/date/time readout under the user's email — deliberately quieter
+   than the email pill above (smaller, unbolded, muted color) so it reads
+   as secondary, supporting information rather than competing with it. */
 .user-timestamp {
-    margin-top: 0.4rem;
+    margin-top: 0.55rem;
     display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 0.3rem;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.timestamp-date {
     font-family: 'Roboto Mono', monospace;
-    font-size: 0.72rem;
+    font-size: 0.68rem;
+    font-weight: 400;
     color: var(--text-tertiary);
     letter-spacing: 0.2px;
+    /* Free to wrap onto a second line on narrow sidebars — only the time
+       below needs to stay glued together as one unit. */
+    white-space: normal;
 }
 
-.timestamp-divider {
-    color: var(--border-color);
+.timestamp-time {
+    display: flex;
+    align-items: baseline;
+    gap: 0.3rem;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    letter-spacing: 0.2px;
+    /* Keep "HH:MM:SS AM/PM" together as a single unbreakable unit so the
+       AM/PM marker can never wrap away onto its own line, separated from
+       the time it belongs to. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .timestamp-seconds {
     display: inline-block;
     color: var(--primary);
-    font-weight: 700;
+    font-weight: 600;
 }
 
 /* Re-triggered every tick from script.js so the seconds visibly "pulse"
@@ -897,7 +932,7 @@ body, html {
     display: flex;
     align-items: center;
     gap: 0.8rem;
-    padding: 0.5rem 1rem;
+    padding: 0.5rem 0.6rem;
     background: var(--surface);
     border: 1px solid var(--border-color);
     border-bottom: none;
@@ -919,7 +954,7 @@ body, html {
 .draggable-line:hover {
     background: var(--surface-hover);
     border-left: 4px solid var(--primary);
-    padding-left: calc(1rem - 3px);
+    padding-left: calc(0.6rem - 3px);
     box-shadow: var(--shadow-sm);
     transform: translateX(4px);
 }
@@ -955,13 +990,13 @@ body, html {
 .draggable-line.correct {
     border-left: 4px solid var(--success);
     background: rgba(76, 175, 80, 0.04);
-    padding-left: calc(1rem - 3px);
+    padding-left: calc(0.6rem - 3px);
 }
 
 .draggable-line.incorrect {
     border-left: 4px solid var(--error);
     background: rgba(176, 0, 32, 0.04);
-    padding-left: calc(1rem - 3px);
+    padding-left: calc(0.6rem - 3px);
 }
 
 .draggable-line.locked {
@@ -1821,6 +1856,65 @@ body, html {
     .console-panel {
         width: 100vw;
         max-width: 100vw;
+    }
+}
+
+/* --- 10.5 CONSOLE DRAWER TAB --- */
+/* A permanently docked handle on the right edge that lets a student pull
+   the console panel into view for the current activity on demand,
+   independent of the global auto-show setting. Sits at a lower z-index
+   than the panel itself, so once the panel slides open it naturally tucks
+   in behind it — no separate show/hide choreography needed beyond
+   toggling `display`. */
+.console-drawer-tab {
+    position: fixed;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    z-index: 1900;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    background: linear-gradient(135deg, var(--primary), #7c3aed);
+    color: #ffffff;
+    border: none;
+    padding: 1rem 0.55rem;
+    border-radius: 10px 0 0 10px;
+    cursor: pointer;
+    box-shadow: -4px 0 14px rgba(0, 0, 0, 0.25);
+    transition: var(--transition);
+}
+
+.console-drawer-tab:hover {
+    padding-right: 0.85rem;
+    background: linear-gradient(135deg, var(--primary-dark), #5a1fc4);
+}
+
+.console-drawer-tab:focus-visible {
+    outline: 3px solid var(--secondary);
+    outline-offset: 2px;
+}
+
+.console-drawer-tab i {
+    font-size: 1.1rem;
+}
+
+.console-drawer-tab-label {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+}
+
+@media (max-width: 768px) {
+    .console-drawer-tab {
+        padding: 0.85rem 0.45rem;
+    }
+    .console-drawer-tab i {
+        font-size: 1rem;
     }
 }
 
