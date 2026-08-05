@@ -2,6 +2,7 @@
  * Basic Structure and Printing
  * Sample Output:
  * Welcome to C Programming!
+ *
  */
 
 #include <stdio.h>
