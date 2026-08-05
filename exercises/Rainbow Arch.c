@@ -5,6 +5,7 @@
  *       Yellow     Brown
  *   Orange             Indigo
  * Red                      Violet
+ *
  */
 
 #include <stdio.h>
