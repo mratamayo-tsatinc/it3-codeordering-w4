@@ -600,6 +600,15 @@ function updateSummaryPanel() {
         totalPossible += ex.answers.length;
     }
     document.getElementById('summaryValue').textContent = `${totalGot} / ${totalPossible}`;
+
+    // Keep the sidebar QR code in sync with the running total so it always
+    // reflects the student's current score, not just the score at the end.
+    // Encryption is async, so this fires and updates the QR once ready.
+    if (currentUser) {
+        buildResultsShareUrl(totalGot, totalPossible).then(shareUrl => {
+            renderQrInto('sidebarQrCodeBox', shareUrl, 110);
+        });
+    }
 }
 
 function switchExercise(name, el) {
@@ -1442,6 +1451,126 @@ function updateConsoleDrawerTab(forceOpen) {
     tab.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
 }
 
+function getCleanSourceUrl() {
+    // Full source URL — host and path — with the query string/hash AND
+    // the protocol stripped off. The protocol isn't needed: results.html
+    // already strips "https://" before displaying it, and every "/" or
+    // ":" left in a URL param gets percent-encoded to 3 characters
+    // (e.g. "/" -> "%2F"), which is the single biggest thing bloating
+    // the QR's data length. Dropping "https://" alone removes 8 raw
+    // characters (and avoids encoding its ":" and "//").
+    return window.location.href.split(/[?#]/)[0].replace(/^https?:\/\//i, '');
+}
+
+function getActivityName() {
+    // The web app's own page title, used as the "activity name" field.
+    return document.title;
+}
+
+// --- QR PAYLOAD ENCRYPTION ---
+// Runs entirely in the browser, so this passphrase is visible to anyone
+// who reads this file — it is NOT a security boundary. It only keeps the
+// score/email/timestamp out of the *plain* QR payload/URL so a casual
+// scan or glance at the address bar doesn't show readable data. This
+// passphrase MUST exactly match the one in results.html.
+const QR_SHARED_PASSPHRASE = 'AA-9002341ds2sd14-dsfs12sd-54231hg';
+const QR_SALT_STRING = 'java-activity-qr-salt-v1';
+
+async function deriveQrKey() {
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        enc.encode(QR_SHARED_PASSPHRASE),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveKey']
+    );
+    return crypto.subtle.deriveKey(
+        {
+            name: 'PBKDF2',
+            salt: enc.encode(QR_SALT_STRING),
+            iterations: 100000,
+            hash: 'SHA-256'
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+    );
+}
+
+function bufferToBase64Url(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    bytes.forEach(b => binary += String.fromCharCode(b));
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function encryptQrPayload(dataObj) {
+    const key = await deriveQrKey();
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const enc = new TextEncoder();
+    const plaintext = enc.encode(JSON.stringify(dataObj));
+    const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+
+    // Pack iv + ciphertext into a single token so results.html only needs
+    // one query parameter to decrypt.
+    const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+    combined.set(iv, 0);
+    combined.set(new Uint8Array(ciphertext), iv.length);
+
+    return bufferToBase64Url(combined);
+}
+
+async function buildResultsShareUrl(rawScore, maxScore) {
+    // Keep the ENCRYPTED payload as short as possible: short keys only,
+    // no domain name inside it (see note below on why the domain travels
+    // separately). A shorter encrypted payload lets the QR library pick
+    // a lower "version," meaning fewer total modules (squares) — each
+    // one rendered bigger and easier for a phone camera to resolve.
+    const payload = {
+        e: currentUser,
+        t: Math.floor(Date.now() / 1000), // unix seconds, shorter than ISO string
+        s: rawScore,
+        m: maxScore
+    };
+
+    const token = await encryptQrPayload(payload);
+    const url = new URL('https://mratamayo-tsatinc.github.io/qr/it5b-w4.html');
+    url.searchParams.set('d', token);
+    url.searchParams.set('a', getCleanSourceUrl());
+    url.searchParams.set('n', getActivityName());
+    return url.toString();
+}
+
+function renderResultsQrCode(shareUrl) {
+    // Bigger box for the same module count = each square renders larger
+    // and more visible, on top of the data-shrinking above.
+    renderQrInto('qrCodeBox', shareUrl, 260);
+    renderQrInto('sidebarQrCodeBox', shareUrl, 170);
+}
+
+function renderQrInto(boxId, shareUrl, size) {
+    const box = document.getElementById(boxId);
+    if (!box || typeof QRCode === 'undefined') return;
+    box.innerHTML = ''; // clear any previously rendered code first
+    new QRCode(box, {
+        text: shareUrl,
+        width: size,
+        height: size,
+        colorDark: '#1a1a1a',
+        colorLight: '#ffffff',
+        // L = lowest error correction (~7% recoverable). Combined with a
+        // short payload, this keeps the QR at a low "version" — fewer
+        // total modules (squares), each rendered bigger at the same box
+        // size, which is what actually makes a phone camera able to
+        // resolve it. (More error correction sounds safer but backfires:
+        // it adds redundancy bytes, which forces MORE modules for the
+        // same data, making each one smaller.)
+        correctLevel: QRCode.CorrectLevel.L
+    });
+}
+
 function calculateTotalScore() {
     let totalGot = 0;
     let totalPossible = 0;
@@ -1453,7 +1582,7 @@ function calculateTotalScore() {
     return { got: totalGot, possible: totalPossible };
 }
 
-function showScoreSummaryModal(completionMessage, messageType = 'success') {
+async function showScoreSummaryModal(completionMessage, messageType = 'success') {
     const { got, possible } = calculateTotalScore();
     
     document.getElementById('finalScore').textContent = got;
@@ -1463,6 +1592,9 @@ function showScoreSummaryModal(completionMessage, messageType = 'success') {
     const messageElement = document.getElementById('completionMessage');
     messageElement.textContent = completionMessage;
     messageElement.className = `completion-message ${messageType}`;
+
+    const shareUrl = await buildResultsShareUrl(got, possible);
+    renderResultsQrCode(shareUrl);
     
     document.getElementById('scoreSummaryModal').style.display = 'block';
     document.getElementById('scoreSummaryOverlay').style.display = 'block';
