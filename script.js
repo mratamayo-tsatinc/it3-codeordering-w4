@@ -35,6 +35,7 @@ let appSettings = {
 
 let timerIntervalId = null;
 let timeRemaining = 0; // in seconds
+let examEndTimestamp = null; // epoch ms the exam timer should expire at; persisted per-student so a reload resumes the real deadline instead of granting a fresh timer
 
 window.onload = async function() {
     // Native HTML5 drag-and-drop (used for line ordering) does not fire on
@@ -289,7 +290,7 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-function handleLogin() {
+async function handleLogin() {
     const email = document.getElementById('emailInput').value.trim();
     const id = document.getElementById('studentNumInput').value.trim();
     const user = studentDatabase.find(s => s.email === email && s.id === id);
@@ -301,11 +302,25 @@ function handleLogin() {
         document.getElementById('userDisplay').textContent = email;
         startUserClock();
         applySidebarWatermark();
-        loadAllExercises();
-        
-        // Start timer if in exam mode
+
+        const { session: resumedSession, isExpired } = await loadAllExercises();
+
+        // Start timer if in exam mode — resuming the real deadline (not a
+        // fresh countdown) if this student already has a persisted session.
         if (appSettings.mode === 'exam') {
-            startTimer();
+            if (isExpired) {
+                // Time was already up (or the exam was already completed)
+                // before this login/reload — stay locked, no timer.
+                stopTimer();
+                document.getElementById('timerContainer').style.display = 'none';
+                document.getElementById('actionButton').disabled = true;
+                saveExamSession();
+            } else if (resumedSession && typeof resumedSession.examEndTimestamp === 'number') {
+                const remaining = Math.max(0, Math.round((resumedSession.examEndTimestamp - Date.now()) / 1000));
+                startTimer(remaining);
+            } else {
+                startTimer();
+            }
         }
     } else {
         const errorEl = document.getElementById('loginError');
@@ -346,6 +361,30 @@ async function loadAllExercises() {
         } catch (e) { console.warn("Missing: " + fileName); }
     }
     document.getElementById('loader').style.display = 'none';
+
+    // --- Restore any persisted exam-mode progress for this student ---
+    // Keyed by email, so a page reload/reconnect during an exam resumes
+    // exactly where the student left off (locked exercises, scores, line
+    // order) instead of silently wiping their answers and handing them a
+    // brand-new timer.
+    let resumedSession = null;
+    let isExpired = false;
+    if (appSettings.mode === 'exam' && currentUser) {
+        resumedSession = loadExamSession(currentUser);
+        if (resumedSession) {
+            applySavedExerciseStates(resumedSession);
+            isExpired = !!resumedSession.completed ||
+                (typeof resumedSession.examEndTimestamp === 'number' && Date.now() >= resumedSession.examEndTimestamp);
+            if (isExpired) {
+                // Lock every exercise, including ones never opened, so a
+                // reload after time's up can't be used to keep answering.
+                for (const file in exerciseData) {
+                    exerciseData[file].locked = true;
+                }
+            }
+        }
+    }
+
     if (list.firstChild) list.firstChild.click();
 
     // Attach action button handler (delegates to verify or reset depending on locked state)
@@ -359,6 +398,30 @@ async function loadAllExercises() {
             checkAnswers();
         }
     });
+
+    return { session: resumedSession, isExpired };
+}
+
+// Applies a previously-saved exam session (locked state, score, and line
+// order per exercise) onto the freshly-loaded exerciseData. Must run after
+// exerciseData has been populated (each exercise re-shuffles on every page
+// load, but userOrder is stored as original line indices, so it re-applies
+// correctly regardless of the new shuffle).
+function applySavedExerciseStates(session) {
+    if (!session || !session.exercises) return;
+    for (const file in session.exercises) {
+        const saved = session.exercises[file];
+        const ex = exerciseData[file];
+        if (!ex || !saved) continue;
+        ex.locked = !!saved.locked;
+        ex.score = saved.score || 0;
+        ex.isPartial = !!saved.isPartial;
+        if (ex.isLineOrdering && Array.isArray(saved.userOrder) && saved.userOrder.length) {
+            ex.userOrder = saved.userOrder;
+        }
+        updateSidebarScore(file);
+    }
+    updateSummaryPanel();
 }
 
 // Fisher-Yates shuffle that guarantees a derangement (no item in original position)
@@ -644,6 +707,10 @@ function switchExercise(name, el) {
                 const jumpSelect = draggableEl.querySelector('.jump-to-select');
                 if (jumpSelect) jumpSelect.disabled = true;
             });
+            // Re-derive correct/incorrect styling from the (possibly
+            // restored) line order, since the DOM was just rebuilt from
+            // ex.html above and doesn't carry the classes over on its own.
+            applyLineOrderingLockedStyling(ex);
         } else {
             const inputs = display.querySelectorAll('.code-input');
             inputs.forEach((input, idx) => {
@@ -687,6 +754,38 @@ function switchExercise(name, el) {
     applyAutoShowForCurrentExercise();
 }
 
+// Marks each draggable line in the current #orderingArea as correct/incorrect
+// based on its DOM position vs. ex.validPositionsMap. Shared by checkAnswers
+// (right after verifying) and by switchExercise (when redisplaying an
+// already-locked exercise, e.g. after restoring a persisted exam session),
+// so the green/red styling matches the stored result either way.
+function applyLineOrderingLockedStyling(ex) {
+    if (!ex || !ex.isLineOrdering) return [];
+    const orderingArea = document.getElementById('orderingArea');
+    if (!orderingArea) return [];
+
+    const orderedLines = Array.from(orderingArea.querySelectorAll('.draggable-line'));
+    const usedValidPositions = new Set();
+
+    orderedLines.forEach((lineEl, idx) => {
+        lineEl.classList.remove('correct', 'incorrect');
+        const originalIdx = parseInt(lineEl.getAttribute('data-original-idx'));
+        const validPositions = ex.validPositionsMap[originalIdx];
+
+        let isCorrect = false;
+        if (validPositions && validPositions.length === 1) {
+            isCorrect = (originalIdx === idx);
+        } else if (validPositions && validPositions.length > 1) {
+            isCorrect = validPositions.includes(idx) && !usedValidPositions.has(idx);
+            if (isCorrect) usedValidPositions.add(idx);
+        }
+
+        lineEl.classList.add(isCorrect ? 'correct' : 'incorrect');
+    });
+
+    return orderedLines;
+}
+
 function checkAnswers() {
     if (!currentFile) return;
     const ex = exerciseData[currentFile];
@@ -695,43 +794,13 @@ function checkAnswers() {
     if (ex.isLineOrdering) {
         // Save user's ordering before verification
         const orderingArea = document.getElementById('orderingArea');
-        const orderedLines = Array.from(orderingArea.querySelectorAll('.draggable-line'));
-        ex.userOrder = orderedLines.map(el => parseInt(el.getAttribute('data-original-idx')));
-        
-        // Clear previous feedback styling
-        orderedLines.forEach(el => {
-            el.classList.remove('correct', 'incorrect');
-        });
-        
-        // Verify line ordering with semantic equivalence for identical lines
-        // Track which valid positions have been used to avoid double-counting duplicates
-        const usedValidPositions = new Set();
-        
-        orderedLines.forEach((lineEl, idx) => {
-            const originalIdx = parseInt(lineEl.getAttribute('data-original-idx'));
-            const validPositions = ex.validPositionsMap[originalIdx];
-            
-            let isCorrect = false;
-            
-            if (validPositions && validPositions.length === 1) {
-                // Unique line - requires exact position match
-                isCorrect = (originalIdx === idx);
-            } else if (validPositions && validPositions.length > 1) {
-                // Duplicate content - check if placed in any valid position for this content
-                // and that position hasn't been claimed yet
-                isCorrect = validPositions.includes(idx) && !usedValidPositions.has(idx);
-                if (isCorrect) {
-                    usedValidPositions.add(idx);
-                }
-            }
-            
-            if (isCorrect) {
-                score++;
-                lineEl.classList.add('correct');
-            } else {
-                lineEl.classList.add('incorrect');
-            }
-        });
+        const orderedLinesBefore = Array.from(orderingArea.querySelectorAll('.draggable-line'));
+        ex.userOrder = orderedLinesBefore.map(el => parseInt(el.getAttribute('data-original-idx')));
+
+        // Verify line ordering (with semantic equivalence for identical
+        // lines) and apply correct/incorrect styling in one pass.
+        const orderedLines = applyLineOrderingLockedStyling(ex);
+        score = orderedLines.filter(el => el.classList.contains('correct')).length;
     } else {
         // Legacy: fill-in-the-blank verification
         const inputs = document.querySelectorAll('.code-input');
@@ -776,7 +845,10 @@ function checkAnswers() {
     if (appSettings.mode === 'exam') {
         actionBtn.textContent = 'Locked';
         actionBtn.disabled = true;
-        
+
+        // Persist this student's progress so it survives a reload.
+        saveExamSession();
+
         // Check if all exercises have been answered in exam mode
         if (checkIfAllAnswered()) {
             // Stop timer early and show score summary
@@ -1006,22 +1078,95 @@ function showNotification(message) {
     }, 3000);
 }
 
+// --- EXAM SESSION PERSISTENCE (keyed by student email) ---
+// Exam mode only: keeps each student's in-progress or completed exam
+// (locked/unlocked state, score, and line order per exercise, plus the
+// real timer deadline) in localStorage so a page reload, browser crash,
+// or accidental tab close doesn't cost them their progress or hand them
+// a brand-new full-length timer. Practice mode is intentionally not
+// persisted — there's nothing at stake in a reset there.
+function getExamStorageKey(email) {
+    return `examSession_${email}`;
+}
+
+function saveExamSession() {
+    if (appSettings.mode !== 'exam' || !currentUser) return;
+
+    const exercises = {};
+    for (const file in exerciseData) {
+        const ex = exerciseData[file];
+        exercises[file] = {
+            locked: !!ex.locked,
+            score: ex.score || 0,
+            isPartial: !!ex.isPartial,
+            userOrder: ex.isLineOrdering ? (ex.userOrder || []) : undefined
+        };
+    }
+
+    const isTimeUp = typeof examEndTimestamp === 'number' && Date.now() >= examEndTimestamp;
+
+    const session = {
+        timerMinutes: appSettings.timerMinutes,
+        examEndTimestamp: examEndTimestamp,
+        completed: checkIfAllAnswered() || isTimeUp,
+        exercises,
+        savedAt: Date.now()
+    };
+
+    try {
+        localStorage.setItem(getExamStorageKey(currentUser), JSON.stringify(session));
+    } catch (e) {
+        console.warn('Could not save exam session progress:', e);
+    }
+}
+
+function loadExamSession(email) {
+    try {
+        const raw = localStorage.getItem(getExamStorageKey(email));
+        return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+        console.warn('Could not load exam session progress:', e);
+        return null;
+    }
+}
+
 // Timer Management
-function startTimer() {
+// resumeSeconds, when provided, resumes a persisted exam session at the
+// real remaining time (e.g. after a page reload) instead of granting a
+// fresh full-length timer.
+function startTimer(resumeSeconds) {
     if (appSettings.mode !== 'exam') {
         return;
     }
-    
-    timeRemaining = appSettings.timerMinutes * 60; // Convert to seconds
+
+    if (typeof resumeSeconds === 'number' && resumeSeconds >= 0) {
+        timeRemaining = resumeSeconds;
+        examEndTimestamp = Date.now() + timeRemaining * 1000;
+    } else {
+        timeRemaining = appSettings.timerMinutes * 60; // Convert to seconds
+        examEndTimestamp = Date.now() + timeRemaining * 1000;
+    }
+
     const timerContainer = document.getElementById('timerContainer');
     timerContainer.style.display = 'flex';
-    
+
     updateTimerDisplay();
-    
+    saveExamSession(); // persist the deadline right away, before any answers are checked
+
+    let tickCount = 0;
     timerIntervalId = setInterval(() => {
-        timeRemaining--;
+        // Recompute from the fixed deadline each tick (rather than just
+        // decrementing) so setInterval drift can't desync the displayed
+        // time — or a persisted deadline — from the real cutoff.
+        timeRemaining = Math.max(0, Math.round((examEndTimestamp - Date.now()) / 1000));
         updateTimerDisplay();
-        
+
+        // Throttle persistence to avoid writing to storage every second.
+        tickCount++;
+        if (tickCount % 5 === 0) {
+            saveExamSession();
+        }
+
         if (timeRemaining <= 0) {
             clearInterval(timerIntervalId);
             handleTimerExpired();
@@ -1065,7 +1210,10 @@ function handleTimerExpired() {
     }
     setInputsDisabled(true);
     document.getElementById('actionButton').disabled = true;
-    
+
+    // Persist the final, fully-locked state for this student.
+    saveExamSession();
+
     // Show score summary modal
     showScoreSummaryModal('Time is up! Your exam session has ended.', 'warning');
 }
