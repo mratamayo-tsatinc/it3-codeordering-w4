@@ -329,12 +329,56 @@ async function handleLogin() {
     }
 }
 
+// --- PER-STUDENT DETERMINISTIC SHUFFLE ---
+// Simple string hash -> 32-bit seed, used to seed a PRNG so the same
+// student always gets the same "random" exercise order.
+function hashStringToSeed(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = (hash << 5) - hash + str.charCodeAt(i);
+        hash |= 0; // force 32-bit int
+    }
+    return hash >>> 0;
+}
+
+// mulberry32: small, fast, deterministic PRNG. Given the same seed it
+// always produces the same sequence of numbers.
+function mulberry32(seed) {
+    return function () {
+        seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+// Returns a shuffled copy of `array`, seeded by `email` so that a given
+// student always gets the same order (stable across reloads/resumed exam
+// sessions), while different students get different orders from each other.
+function shuffleExercisesForStudent(array, email) {
+    const rng = mulberry32(hashStringToSeed(email || ''));
+    const result = [...array];
+    for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+}
+
 async function loadAllExercises() {
     const list = document.getElementById('fileList');
     list.innerHTML = ""; 
     document.getElementById('loader').style.display = 'block';
 
-    for (const fileName of EXERCISES) {
+    // In exam mode, randomize the exercise order per student (seeded by
+    // their email, so the order is stable across reloads/resumed exam
+    // sessions but differs from student to student). Practice mode keeps
+    // the fixed authoring order defined in EXERCISES.
+    const orderedExercises = (appSettings.mode === 'exam' && currentUser)
+        ? shuffleExercisesForStudent(EXERCISES, currentUser)
+        : EXERCISES;
+
+    for (const fileName of orderedExercises) {
         try {
             const res = await fetch('./exercises/' + fileName);
             const code = await res.text();
