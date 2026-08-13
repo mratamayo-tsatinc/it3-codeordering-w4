@@ -2,6 +2,8 @@
  * Basic Structure and Printing
  * Sample Output:
  * Welcome to C Programming!
+ * Welcome to C Programming!
+ * Welcome to C Programming!
  *
  */
 
@@ -9,6 +11,8 @@
 
 int main() 
 {
+    printf("Welcome to C Programming!\n");
+    printf("Welcome to C Programming!\n");
     printf("Welcome to C Programming!\n");
     
     return 0;
