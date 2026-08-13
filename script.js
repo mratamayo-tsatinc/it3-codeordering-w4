@@ -20,6 +20,7 @@ const EXERCISES = [
     'Product Discount Calculator.c',
     'Rectangle Perimeter.c',
     'Student Grade Averager.c',
+    'Print OO Words.c',
 ];
 let studentDatabase = [];
 let exerciseData = {}; 
