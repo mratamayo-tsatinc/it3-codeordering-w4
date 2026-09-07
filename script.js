@@ -29,7 +29,7 @@ let currentUser = "";
 
 // Settings and Mode Management
 let appSettings = {
-    mode: 'exam', // 'practice' or 'exam'
+    mode: 'practice', // 'practice' or 'exam'
     timerMinutes: 20,
     autoShowSample: true // whether the console panel auto-opens when an exercise has sample output; device-based default set below
 };
